@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="permissions-policy" content="camera=(self)">
+    <title>Shadow-Play | Interactive Light Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a0e27 0%, #000000 100%);
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        #status {
+            display: inline-block;
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        #status.forming {
+            background: rgba(255, 100, 150, 0.3);
+            border-color: rgba(255, 100, 150, 0.5);
+            color: #ff6496;
+            text-shadow: 0 0 15px rgba(255, 100, 150, 0.8);
+        }
+
+        #controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 20px 30px;
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            min-width: 280px;
+        }
+
+        .control-group {
+            width: 100%;
+            text-align: center;
+        }
+
+        .control-group label {
+            display: block;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 10px;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        #sensitivitySlider {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        #sensitivitySlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #fff, #ff6496);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 100, 150, 0.6);
+            transition: transform 0.2s ease;
+        }
+
+        #sensitivitySlider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        #sensitivityValue {
+            display: inline-block;
+            color: #ff6496;
+            font-size: 14px;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+
+        .hint-text {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 9px;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        #cameraPreview {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 120px;
+            height: 90px;
+            z-index: 50;
+            opacity: 0.5;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            transform: scaleX(-1);
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        #cameraVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        #previewCanvas {
+            width: 100%;
+            height: 100%;
+            display: none; /* Hidden, used for processing only */
+        }
+
+        #lightIndicator {
+            position: fixed;
+            top: 115px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 5px;
+        }
+
+        #luxValue {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .indicator-bar {
+            width: 120px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .indicator-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6496, #fff);
+            width: 0%;
+            transition: width 0.2s ease;
+        }
+
+        #instructions {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 200;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.9);
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.5s ease;
+        }
+
+        #instructions.hidden {
+            opacity: 0;
+        }
+
+        #instructions h1 {
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 6px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #fff, #ff6496);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        #instructions p {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            max-width: 300px;
+            line-height: 1.6;
+        }
+
+        .permission-btn {
+            margin-top: 25px;
+            padding: 14px 35px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-family: inherit;
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 25px;
+            pointer-events: all;
+            transition: all 0.3s ease;
+        }
+
+        .permission-btn:hover {
+            background: rgba(255, 100, 150, 0.2);
+            border-color: rgba(255, 100, 150, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(255, 100, 150, 0.3);
+        }
+
+        #errorMsg {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 300;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 100, 100, 0.3);
+            color: #ff6666;
+            text-align: center;
+            display: none;
+            max-width: 350px;
+        }
+
+        #errorMsg h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        #errorMsg p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 10px;
+        }
+
+        #errorMsg .error-detail {
+            font-size: 11px;
+            color: rgba(255, 100, 100, 0.7);
+            font-family: monospace;
+            background: rgba(255, 100, 100, 0.1);
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .debug-info {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 10px;
+            z-index: 100;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            #controls {
+                bottom: 20px;
+                padding: 15px 20px;
+                min-width: 240px;
+                width: 90%;
+                max-width: 350px;
+            }
+            
+            #hud {
+                top: 10px;
+                left: 10px;
+                font-size: 10px;
+            }
+            
+            #cameraPreview {
+                width: 100px;
+                height: 75px;
+                top: 10px;
+                right: 10px;
+            }
+            
+            #lightIndicator {
+                top: 90px;
+                right: 10px;
+            }
+            
+            .indicator-bar {
+                width: 100px;
+            }
+            
+            #instructions h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <!-- Video element with all required attributes for mobile -->
+    <video id="cameraVideo" 
+           autoplay 
+           playsinline 
+           muted 
+           preload="auto"
+           style="display: none;">
+    </video>
+    
+    <!-- Visible preview container -->
+    <div id="cameraPreview">
+        <canvas id="previewCanvas"></canvas>
+    </div>
+    
+    <div id="hud">
+        STATUS: <span id="status">WAITING FOR SHADOW</span>
+    </div>
+    
+    <div id="lightIndicator">
+        <span id="luxValue">-- LUX</span>
+        <div class="indicator-bar">
+            <div class="indicator-fill" id="indicatorFill"></div>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <div class="control-group">
+            <label>Sensitivitas Bayangan</label>
+            <input type="range" id="sensitivitySlider" min="10" max="100" value="40">
+            <span id="sensitivityValue">40</span>
+            <div class="hint-text">Tutupi kamera depan dengan tangan untuk mengubah bentuk</div>
+        </div>
+    </div>
+    
+    <div class="debug-info" id="debugInfo"></div>
+    
+    <div id="instructions">
+        <h1>Shadow Play</h1>
+        <p>Aktifkan kamera untuk mengalami seni interaktif berbasis bayangan</p>
+        <button class="permission-btn" onclick="startExperience()">Mulai</button>
+    </div>
+    
+    <div id="errorMsg">
+        <h3>Kamera Tidak Tersedia</h3>
+        <p id="errorText">Tidak dapat mengakses kamera. Pastikan Anda menggunakan HTTPS dan browser yang mendukung.</p>
+        <div class="error-detail" id="errorDetail"></div>
+    </div>
+
+    <script>
+        const CONFIG = {
+            particleCount: 200,
+            baseColor: { r: 200, g: 230, b: 255 },
+            loveColor: { r: 255, g: 60, b: 120 },
+            particleSize: { min: 2.5, max: 5 },
+            speed: { normal: 0.5, formation: 0.08 },
+            threshold: 40,
+            heartPadding: 80,
+            outlineRatio: 0.75
+        };
+
+        let state = {
+            isShadowDetected: false,
+            brightness: 100,
+            particles: [],
+            heartTargets: [],
+            animationId: null,
+            cameraActive: false,
+            canvasCenter: { x: 0, y: 0 },
+            heartScale: 1
+        };
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('cameraVideo');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const previewCtx = previewCanvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const luxValueEl = document.getElementById('luxValue');
+        const indicatorFill = document.getElementById('indicatorFill');
+        const sensitivitySlider = document.getElementById('sensitivitySlider');
+        const sensitivityValue = document.getElementById('sensitivityValue');
+        const instructions = document.getElementById('instructions');
+        const errorMsg = document.getElementById('errorMsg');
+        const errorText = document.getElementById('errorText');
+        const errorDetail = document.getElementById('errorDetail');
+        const debugInfo = document.getElementById('debugInfo');
+
+        function showDebug(msg) {
+            debugInfo.textContent = msg;
+            console.log('[ShadowPlay]', msg);
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            state.canvasCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+            calculateHeartScale();
+            generateHeartTargets();
+            state.particles.forEach((p, i) => {
+                if (state.heartTargets[i]) {
+                    p.targetX = state.heartTargets[i].x;
+                    p.targetY = state.heartTargets[i].y;
+                }
+            });
+        }
+
+        function calculateHeartScale() {
+            const minDimension = Math.min(canvas.width, canvas.height);
+            const availableSpace = minDimension - (CONFIG.heartPadding * 2);
+            const heartHeight = 29;
+            state.heartScale = (availableSpace / heartHeight) * 0.85;
+        }
+
+        function heartX(t) {
+            return 16 * Math.pow(Math.sin(t), 3);
+        }
+
+        function heartY(t) {
+            return -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+        }
+
+        function isInsideHeart(x, y) {
+            const xn = x / 16;
+            const yn = -y / 16;
+            return Math.pow(xn*xn + yn*yn - 1, 3) - xn*xn*yn*yn*yn <= 0;
+        }
+
+        function generateHeartTargets() {
+            state.heartTargets = [];
+            const cx = state.canvasCenter.x;
+            const cy = state.canvasCenter.y;
+            const scale = state.heartScale;
+            const yOffset = 2 * scale;
+
+            const nOutline = Math.floor(CONFIG.particleCount * CONFIG.outlineRatio);
+            const nFill = CONFIG.particleCount - nOutline;
+
+            // Generate outline targets
+            const steps = 1000;
+            let arcLengths = [0];
+            let points = [];
+            
+            for (let i = 0; i <= steps; i++) {
+                const t = (i / steps) * Math.PI * 2;
+                points.push({ t: t, x: heartX(t), y: heartY(t) });
+            }
+            
+            for (let i = 1; i < points.length; i++) {
+                const dx = points[i].x - points[i-1].x;
+                const dy = points[i].y - points[i-1].y;
+                arcLengths.push(arcLengths[arcLengths.length - 1] + Math.sqrt(dx*dx + dy*dy));
+            }
+            
+            const totalLength = arcLengths[arcLengths.length - 1];
+            
+            for (let i = 0; i < nOutline; i++) {
+                const targetLength = (i / nOutline) * totalLength;
+                let idx = 0;
+                while (idx < arcLengths.length - 1 && arcLengths[idx] < targetLength) idx++;
+                
+                const t = points[idx].t;
+                const x = heartX(t) * scale;
+                const y = heartY(t) * scale + yOffset;
+                
+                state.heartTargets.push({ x: cx + x, y: cy + y, isOutline: true });
+            }
+
+            // Generate fill targets
+            let fillCandidates = [];
+            for (let x = -15; x <= 15; x += 1.5) {
+                for (let y = -16; y <= 11; y += 1.5) {
+                    if (isInsideHeart(x, y)) {
+                        fillCandidates.push({ x: x * scale, y: y * scale + yOffset });
+                    }
+                }
+            }
+            
+            for (let i = fillCandidates.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [fillCandidates[i], fillCandidates[j]] = [fillCandidates[j], fillCandidates[i]];
+            }
+            
+            for (let i = 0; i < nFill && i < fillCandidates.length; i++) {
+                state.heartTargets.push({ x: cx + fillCandidates[i].x, y: cy + fillCandidates[i].y, isOutline: false });
+            }
+
+            while (state.heartTargets.length < CONFIG.particleCount) {
+                const t = Math.random() * Math.PI * 2;
+                state.heartTargets.push({
+                    x: cx + heartX(t) * scale,
+                    y: cy + heartY(t) * scale + yOffset,
+                    isOutline: true
+                });
+            }
+        }
+
+        class Particle {
+            constructor(index) {
+                this.index = index;
+                this.reset();
+                this.assignTarget();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * CONFIG.speed.normal;
+                this.vy = (Math.random() - 0.5) * CONFIG.speed.normal;
+                this.radius = CONFIG.particleSize.min + Math.random() * (CONFIG.particleSize.max - CONFIG.particleSize.min);
+                this.alpha = 0.4 + Math.random() * 0.6;
+                this.pulse = Math.random() * Math.PI * 2;
+                this.pulseSpeed = 0.015 + Math.random() * 0.02;
+            }
+
+            assignTarget() {
+                if (state.heartTargets[this.index]) {
+                    this.targetX = state.heartTargets[this.index].x;
+                    this.targetY = state.heartTargets[this.index].y;
+                }
+            }
+
+            update() {
+                if (state.isShadowDetected) {
+                    const dx = this.targetX - this.x;
+                    const dy = this.targetY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist > 2) {
+                        const force = Math.min(dist * 0.015, CONFIG.speed.formation);
+                        this.vx += (dx / (dist + 0.1)) * force;
+                        this.vy += (dy / (dist + 0.1)) * force;
+                    }
+                    
+                    this.vx *= 0.9;
+                    this.vy *= 0.9;
+                    
+                    this.x += this.vx;
+                    this.y += this.vy;
+                } else {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    
+                    if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                    if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+                    
+                    this.x = Math.max(0, Math.min(canvas.width, this.x));
+                    this.y = Math.max(0, Math.min(canvas.height, this.y));
+                    
+                    this.vx += (Math.random() - 0.5) * 0.06;
+                    this.vy += (Math.random() - 0.5) * 0.06;
+                    
+                    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    if (speed > CONFIG.speed.normal) {
+                        this.vx = (this.vx / speed) * CONFIG.speed.normal;
+                        this.vy = (this.vy / speed) * CONFIG.speed.normal;
+                    }
+                }
+                
+                this.pulse += this.pulseSpeed;
+            }
+
+            draw() {
+                const pulseFactor = 0.85 + Math.sin(this.pulse) * 0.15;
+                const currentRadius = this.radius * pulseFactor;
+                
+                const r = state.isShadowDetected ? CONFIG.loveColor.r : CONFIG.baseColor.r;
+                const g = state.isShadowDetected ? CONFIG.loveColor.g : CONFIG.baseColor.g;
+                const b = state.isShadowDetected ? CONFIG.loveColor.b : CONFIG.baseColor.b;
+                
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, currentRadius * 5
+                );
+                
+                const alpha = this.alpha * (state.isShadowDetected ? 1 : 0.7);
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha})`);
+                gradient.addColorStop(0.2, `rgba(${r}, ${g}, ${b}, ${alpha * 0.6})`);
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius * 5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            state.particles = [];
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                state.particles.push(new Particle(i));
+            }
+        }
+
+        // Check if getUserMedia is supported
+        function checkCameraSupport() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                // Try legacy API
+                navigator.getUserMedia = navigator.getUserMedia || 
+                                        navigator.webkitGetUserMedia || 
+                                        navigator.mozGetUserMedia || 
+                                        navigator.msGetUserMedia;
+                
+                if (!navigator.getUserMedia) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        async function initCamera() {
+            showDebug('Meminta akses kamera...');
+            
+            if (!checkCameraSupport()) {
+                showError('Browser tidak mendukung akses kamera', 
+                          'getUserMedia tidak tersedia di browser ini.');
+                return;
+            }
+
+            // Check for secure context
+            if (!window.isSecureContext) {
+                showError('HTTPS Diperlukan', 
+                          'Aplikasi harus dijalankan via HTTPS atau localhost untuk mengakses kamera.');
+                return;
+            }
+
+            try {
+                const constraints = { 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                };
+
+                showDebug('Menginisialisasi getUserMedia...');
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                showDebug('Stream didapatkan, menghubungkan ke video...');
+                video.srcObject = stream;
+                state.cameraActive = true;
+                
+                // Wait for video to be ready
+                video.onloadedmetadata = () => {
+                    showDebug('Video metadata loaded, playing...');
+                    video.play().then(() => {
+                        showDebug('Video playing, starting processing...');
+                        previewCanvas.width = 320;
+                        previewCanvas.height = 240;
+                        
+                        // Draw initial frame to preview
+                        previewCtx.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
+                        
+                        // Start processing loop
+                        setTimeout(() => {
+                            processVideoFrame();
+                        }, 500);
+                    }).catch(err => {
+                        showError('Gagal memutar video', err.message);
+                    });
+                };
+
+                video.onerror = (err) => {
+                    showError('Error pada video element', err.message || 'Unknown error');
+                };
+                
+            } catch (err) {
+                console.error('Camera error:', err);
+                let errorMsg = 'Tidak dapat mengakses kamera';
+                let detail = err.name + ': ' + err.message;
+                
+                if (err.name === 'NotAllowedError') {
+                    errorMsg = 'Izin Kamera Ditolak';
+                    detail = 'User menolak izin kamera atau izin tidak diberikan.';
+                } else if (err.name === 'NotFoundError') {
+                    errorMsg = 'Kamera Tidak Ditemukan';
+                    detail = 'Tidak ada kamera depan di perangkat ini.';
+                } else if (err.name === 'NotReadableError') {
+                    errorMsg = 'Kamera Sedang Digunakan';
+                    detail = 'Kamera mungkin sedang digunakan aplikasi lain.';
+                } else if (err.name === 'OverconstrainedError') {
+                    errorMsg = 'Konstrain Kamera Tidak Didukung';
+                    detail = 'Mencoba dengan konstrain default...';
+                    // Retry with simpler constraints
+                    retryWithSimpleConstraints();
+                    return;
+                }
+                
+                showError(errorMsg, detail);
+            }
+        }
+
+        async function retryWithSimpleConstraints() {
+            try {
+                showDebug('Mencoba dengan konstrain sederhana...');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true,
+                    audio: false 
+                });
+                video.srcObject = stream;
+                state.cameraActive = true;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    previewCanvas.width = 320;
+                    previewCanvas.height = 240;
+                    setTimeout(processVideoFrame, 500);
+                };
+            } catch (err) {
+                showError('Gagal dengan konstrain sederhana', err.message);
+            }
+        }
+
+        function showError(title, detail) {
+            errorText.textContent = title;
+            errorDetail.textContent = detail;
+            errorMsg.style.display = 'block';
+            instructions.classList.add('hidden');
+            showDebug('Error: ' + title);
+        }
+
+        function processVideoFrame() {
+            if (!state.cameraActive || video.paused || video.ended) {
+                requestAnimationFrame(processVideoFrame);
+                return;
+            }
+            
+            try {
+                // Draw video to preview canvas
+                previewCtx.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
+                
+                // Get brightness from center region
+                const centerX = Math.floor(previewCanvas.width / 2);
+                const centerY = Math.floor(previewCanvas.height / 2);
+                const sampleSize = 60;
+                
+                const imageData = previewCtx.getImageData(
+                    centerX - sampleSize/2, 
+                    centerY - sampleSize/2, 
+                    sampleSize, 
+                    sampleSize
+                );
+                
+                const data = imageData.data;
+                let totalBrightness = 0;
+                let pixelCount = 0;
+                
+                for (let i = 0; i < data.length; i += 16) { // Sample every 4th pixel for performance
+                    const brightness = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+                    totalBrightness += brightness;
+                    pixelCount++;
+                }
+                
+                const avgBrightness = totalBrightness / pixelCount;
+                state.brightness = avgBrightness;
+                
+                luxValueEl.textContent = Math.floor(avgBrightness) + ' LUX';
+                indicatorFill.style.width = Math.min(100, (avgBrightness / 255) * 100) + '%';
+                
+                const threshold = parseInt(sensitivitySlider.value);
+                const isDark = avgBrightness < threshold;
+                
+                if (isDark !== state.isShadowDetected) {
+                    state.isShadowDetected = isDark;
+                    updateStatus();
+                }
+            } catch (err) {
+                showDebug('Processing error: ' + err.message);
+            }
+            
+            requestAnimationFrame(processVideoFrame);
+        }
+
+        function updateStatus() {
+            if (state.isShadowDetected) {
+                statusEl.textContent = 'FORMING LOVE';
+                statusEl.classList.add('forming');
+            } else {
+                statusEl.textContent = 'WAITING FOR SHADOW';
+                statusEl.classList.remove('forming');
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            state.particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            
+            state.animationId = requestAnimationFrame(animate);
+        }
+
+        function startExperience() {
+            instructions.classList.add('hidden');
+            showDebug('Memulai pengalaman...');
+            initCamera();
+        }
+
+        sensitivitySlider.addEventListener('input', (e) => {
+            sensitivityValue.textContent = e.target.value;
+            CONFIG.threshold = parseInt(e.target.value);
+        });
+
+        window.addEventListener('resize', resize);
+
+        // Initialize
+        showDebug('Inisialisasi aplikasi...');
+        resize();
+        initParticles();
+        animate();
+        
+        // Show debug info about environment
+        showDebug('Secure: ' + (window.isSecureContext ? 'Yes' : 'No') + 
+                  ' | mediaDevices: ' + (navigator.mediaDevices ? 'Yes' : 'No'));
+    </script>
+</body>
+</html>
